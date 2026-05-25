@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+      - name: Install dependencies
+        run: uv sync
+      - name: Run tests
+        run: uv run pytest --cov=src tests/
+      - name: Lint
+        run: uv run flake8 src/ tests/
+
+  docker-build-and-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ["scheduler", "executor", "sidecar", "api"]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: ${{ matrix.image }}
+          load: true
+          tags: |
+            agent-orchestrator-${{ matrix.image }}:${{ github.sha }}
+            agent-orchestrator-${{ matrix.image }}:latest
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: agent-orchestrator-${{ matrix.image }}:${{ github.sha }}
+          format: table
+          exit-code: 1
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true
+      - name: Verify image digest
+        run: |
+          DIGEST=$(docker inspect agent-orchestrator-${{ matrix.image }}:${{ github.sha }} --format '{{.Id}}' | cut -d: -f2)
+          echo "IMAGE=${{ matrix.image }} DIGEST=$DIGEST" >> $GITHUB_STEP_SUMMARY
+          echo "✅ ${{ matrix.image }} built and scanned: sha256:$DIGEST"
