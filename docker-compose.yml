@@ -1,0 +1,45 @@
+version: "3.8"
+
+services:
+  scheduler:
+    build:
+      context: .
+      target: scheduler
+    ports:
+      - "8001:8000"
+    environment:
+      - LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  executor:
+    build:
+      context: .
+      target: executor
+    environment:
+      - MAX_CONCURRENT=5
+      - LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  sidecar:
+    build:
+      context: .
+      target: sidecar
+    environment:
+      - MONITOR_ENDPOINT=http://scheduler:8000
+      - LOG_LEVEL=info
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
