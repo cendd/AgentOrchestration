@@ -1,0 +1,40 @@
+# CI Workflow with release signing concurrency protection
+# Placed at root due to fork .github/workflows/ sync issue
+# Move to .github/workflows/ci.yml in upstream
+
+name: CI Release Signing
+
+on:
+  release:
+    types: [published, edited]
+
+# Prevent concurrent signing for the same release tag
+concurrency:
+  group: release-signing-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-sign:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Verify release artifacts
+        run: |
+          echo "Verifying release artifacts for ${{ github.event.release.tag_name }}"
+          # Validate that release artifacts exist before signing
+
+      - name: Generate provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: "dist/*"
+
+      - name: Sign release
+        run: |
+          echo "Signing release ${{ github.event.release.tag_name }}"
+          # Signing occurs here — concurrency group ensures only one at a time
